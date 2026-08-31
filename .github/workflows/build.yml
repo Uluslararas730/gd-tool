@@ -5,32 +5,38 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Kodu Cek
         uses: actions/checkout@v4
 
-      - name: Python Kur
-        uses: actions/setup-python@v5
+      - name: Buildozer ile APK Derle
+        uses: ArtemSzymanskii/buildozer-action@v1.2
         with:
-          python-version: '3.10'
-
-      - name: Bagimliliklari Kur
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev libssl-dev
-          pip install --upgrade pip
-          pip install buildozer cython
-
-      - name: APK Derle
-        run: |
-          buildozer init
-          sed -i 's/#android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE/android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE/' buildozer.spec
-          sed -i 's/#android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
-          yes | buildozer android debug
+          command: |
+            cat << 'EOF' > buildozer.spec
+            [app]
+            title = GD Save Tool
+            package.name = gdsavetool
+            package.domain = org.gdtool
+            source.dir = .
+            source.include_exts = py,png,jpg,kv,atlas
+            version = 1.0.0
+            requirements = python3,kivy
+            orientation = portrait
+            fullscreen = 0
+            android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
+            android.accept_sdk_license = True
+            android.api = 33
+            android.minapi = 21
+            android.archs = arm64-v8a, armeabi-v7a
+            [buildozer]
+            log_level = 2
+            warn_on_root = 1
+            EOF
+            buildozer android debug
+          subfolder: .
 
       - name: APK'yi Yukle
         uses: actions/upload-artifact@v4
