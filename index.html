@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GD Save Tool — Web</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d0f14">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<style>
+  :root{
+    --bg: #0d0f14;
+    --panel: #14171f;
+    --panel-border: #262b38;
+    --text: #e7e9ee;
+    --text-dim: #8b93a7;
+    --dec: #ff7a45;
+    --enc: #33c9e8;
+    --ok: #4ade80;
+    --err: #ff5d6c;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;padding:32px 18px 60px;position:relative;overflow-x:hidden;}
+  .bg-shape{position:fixed;width:340px;height:340px;top:-120px;right:-140px;background:linear-gradient(135deg,var(--dec),transparent 70%);opacity:.12;clip-path:polygon(50% 0%,100% 100%,0% 100%);pointer-events:none;z-index:0;}
+  .wrap{max-width:600px;margin:0 auto;position:relative;z-index:1;}
+  header{margin-bottom:28px;}
+  .eyebrow-shape{width:14px;height:14px;background:var(--enc);clip-path:polygon(50% 0%,100% 100%,0% 100%);display:inline-block;margin-right:8px;transform:translateY(1px);}
+  h1{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:28px;letter-spacing:.3px;margin:0 0 8px;line-height:1.15;}
+  header p{color:var(--text-dim);font-size:14px;line-height:1.6;margin:0;max-width:46ch;}
+  .card{background:var(--panel);border:1px solid var(--panel-border);border-radius:6px;padding:22px 20px;margin-bottom:20px;}
+  .card h2{font-family:'Rajdhani',sans-serif;font-size:19px;font-weight:600;margin:0 0 4px;display:flex;align-items:center;gap:9px;}
+  .tag{width:9px;height:9px;border-radius:1px;display:inline-block;}
+  .tag.dec{background:var(--dec);}
+  .tag.enc{background:var(--enc);}
+  .card .desc{color:var(--text-dim);font-size:13px;margin:0 0 18px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:6px;font-weight:500;}
+  .filedrop{border:1.5px dashed var(--panel-border);border-radius:5px;padding:16px;text-align:center;cursor:pointer;transition:border-color .15s ease, background .15s ease;font-size:13px;color:var(--text-dim);}
+  .filedrop:hover{border-color:var(--text-dim);}
+  .filedrop.has-file{border-style:solid;color:var(--text);background:rgba(255,255,255,.02);}
+  .filedrop input{display:none;}
+  input[type=text]{width:100%;background:#0d0f14;border:1px solid var(--panel-border);color:var(--text);padding:10px 12px;border-radius:5px;font-size:14px;font-family:'Inter',sans-serif;}
+  input[type=text]:focus{outline:2px solid var(--enc);outline-offset:1px;}
+  .checkline{display:flex;align-items:center;gap:9px;margin-bottom:16px;cursor:pointer;user-select:none;font-size:13px;color:var(--text-dim);}
+  .checkline input{accent-color:var(--enc);width:15px;height:15px;}
+  button.go{width:100%;border:none;padding:12px;border-radius:5px;font-family:'Rajdhani',sans-serif;font-weight:600;font-size:15px;letter-spacing:.3px;cursor:pointer;color:#0d0f14;transition:filter .15s ease;}
+  button.go:hover{filter:brightness(1.1);}
+  button.go:active{filter:brightness(.92);}
+  button.go:disabled{opacity:.4;cursor:not-allowed;}
+  .go.dec{background:var(--dec);}
+  .go.enc{background:var(--enc);}
+  .status{margin-top:12px;font-size:13px;line-height:1.5;padding:10px 12px;border-radius:5px;display:none;white-space:pre-wrap;}
+  .status.show{display:block;}
+  .status.ok{background:rgba(74,222,128,.1);color:var(--ok);}
+  .status.err{background:rgba(255,93,108,.1);color:var(--err);}
+  details{margin-top:26px;font-size:13px;color:var(--text-dim);}
+  details summary{cursor:pointer;color:var(--text);font-weight:500;font-family:'Rajdhani',sans-serif;font-size:15px;}
+  details p{line-height:1.7;}
+  code{background:#0d0f14;padding:1px 5px;border-radius:3px;font-size:12px;border:1px solid var(--panel-border);}
+  footer{margin-top:30px;font-size:12px;color:var(--text-dim);line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="bg-shape"></div>
+<div class="wrap">
+  <header>
+    <h1><span class="eyebrow-shape"></span>Geometry Dash Save Tool</h1>
+    <p>Save dosyalarını (.dat) düzenlenebilir XML'e çevir, ya da düzenlediğin XML'i oyunun okuyabileceği .dat formatına geri çevir. Her şey tarayıcında çalışır, dosyan hiçbir sunucuya gönderilmez.</p>
+  </header>
+  <div class="card">
+    <h2><span class="tag dec"></span>Decrypt</h2>
+    <p class="desc">.dat dosyasını seç, düzenlenebilir .xml olarak indir.</p>
+    <div class="field">
+      <label>Kaynak dosya (.dat)</label>
+      <div class="filedrop" id="drop-dec">
+        <span id="drop-dec-text">Dosya seçmek için dokun</span>
+        <input type="file" id="file-dec">
+      </div>
+    </div>
+    <label class="checkline">
+      <input type="checkbox" id="prettify">
+      Prettify — XML'i okunaklı biçimde girintile
+    </label>
+    <div class="field">
+      <label>İndirilecek dosya adı</label>
+      <input type="text" id="out-dec" placeholder="CCGameManager.xml">
+    </div>
+    <button class="go dec" id="btn-dec" disabled>Decrypt &amp; İndir</button>
+    <div class="status" id="status-dec"></div>
+  </div>
+  <div class="card">
+    <h2><span class="tag enc"></span>Encrypt</h2>
+    <p class="desc">Düzenlediğin .xml dosyasını seç, oyunun okuyacağı .dat formatına çevir.</p>
+    <div class="field">
+      <label>Kaynak dosya (.xml)</label>
+      <div class="filedrop" id="drop-enc">
+        <span id="drop-enc-text">Dosya seçmek için dokun</span>
+        <input type="file" id="file-enc">
+      </div>
+    </div>
+    <div class="field">
+      <label>İndirilecek dosya adı</label>
+      <input type="text" id="out-enc" placeholder="CCGameManager.dat">
+    </div>
+    <button class="go enc" id="btn-enc" disabled>Encrypt &amp; İndir</button>
+    <div class="status" id="status-enc"></div>
+  </div>
+  <details>
+    <summary>Nasıl kullanılır?</summary>
+    <p>
+      Geometry Dash save dosyaların genelde şurada bulunur:<br>
+      <code>Android/media/com.geode.launcher/save/</code><br>
+      Dosya adları: <code>CCGameManager.dat</code>, <code>CCGameManager2.dat</code>, <code>CCLocalLevels.dat</code>, <code>CCLocalLevels2.dat</code>.
+    </p>
+    <p>
+      Bu dosyaları telefonundaki bir dosya yöneticisiyle bu sayfaya yükle, düzenle, sonra Encrypt ile aynı isimle geri kaydet ve orijinal konumuna taşı. Oyunu düzenleme yapmadan önce kapatman önerilir.
+    </p>
+  </details>
+  <footer>Tüm işlem cihazında, tarayıcı içinde yapılır — hiçbir dosya yüklenmez veya gönderilmez.</footer>
+</div>
