@@ -121,4 +121,197 @@
     </p>
   </details>
   <footer>Tüm işlem cihazında, tarayıcı içinde yapılır — hiçbir dosya yüklenmez veya gönderilmez.</footer>
-</div>
+</div><script>
+function setFileLabel(el, name){ el.textContent = name; el.parentElement.classList.add('has-file'); }
+function stripExt(name){ return name.replace(/\.[^/.]+$/, ''); }
+function showStatus(el, ok, msg){
+  el.className = 'status show ' + (ok ? 'ok' : 'err');
+  el.textContent = msg;
+}
+function download(bytes, filename){
+  const blob = new Blob([bytes], {type:'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function xorBytes(bytes, value){
+  const out = new Uint8Array(bytes.length);
+  for(let i=0;i<bytes.length;i++) out[i] = bytes[i] ^ value;
+  return out;
+}
+function b64ToBytes(b64){
+  const std = b64.replace(/-/g,'+').replace(/_/g,'/');
+  const bin = atob(std);
+  const out = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function bytesToB64(bytes){
+  let bin = '';
+  const chunk = 0x8000;
+  for(let i=0;i<bytes.length;i+=chunk){
+    bin += String.fromCharCode.apply(null, bytes.subarray(i,i+chunk));
+  }
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_');
+}
+function crc32(bytes){
+  let crc = -1;
+  for(let i=0;i<bytes.length;i++){
+    crc ^= bytes[i];
+    for(let j=0;j<8;j++){
+      crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ -1) >>> 0;
+}
+function packUInt32LE(n){
+  const b = new Uint8Array(4);
+  b[0]=n&255; b[1]=(n>>>8)&255; b[2]=(n>>>16)&255; b[3]=(n>>>24)&255;
+  return b;
+}
+function concatBytes(arrs){
+  let len = 0; arrs.forEach(a=>len+=a.length);
+  const out = new Uint8Array(len);
+  let off = 0; arrs.forEach(a=>{out.set(a,off); off+=a.length;});
+  return out;
+}
+function escapeXML(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escapeAttr(s){
+  return escapeXML(s).replace(/"/g,'&quot;');
+}
+function serializeElement(node, depth, pretty){
+  const tag = node.tagName;
+  const attrs = Array.from(node.attributes).map(a=>` ${a.name}="${escapeAttr(a.value)}"`).join('');
+  const children = Array.from(node.childNodes).filter(n =>
+    n.nodeType === 1 || (n.nodeType === 3 && n.textContent.trim().length)
+  );
+  const pad = pretty ? '\t'.repeat(depth) : '';
+  const nl = pretty ? '\n' : '';
+  if(children.length === 0){
+    return `${pad}<${tag}${attrs}></${tag}>`;
+  }
+  if(children.every(c => c.nodeType === 3)){
+    const text = escapeXML(children.map(c=>c.textContent.trim()).join(''));
+    return `${pad}<${tag}${attrs}>${text}</${tag}>`;
+  }
+  const inner = children
+    .filter(c => c.nodeType === 1)
+    .map(c => serializeElement(c, depth+1, pretty))
+    .join(nl);
+  return `${pad}<${tag}${attrs}>${nl}${inner}${nl}${pad}</${tag}>`;
+}
+function xmlToString(root, pretty){
+  return "<?xml version='1.0' encoding='utf-8'?>\n" + serializeElement(root, 0, pretty);
+}
+async function decryptFile(file, prettify){
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const decrypted = xorBytes(buf, 11);
+  let decoded;
+  try{
+    const text = new TextDecoder('latin1').decode(decrypted);
+    decoded = b64ToBytes(text);
+  }catch(e){
+    throw new Error('Base64 çözülemedi — dosya bozuk veya farklı formatta olabilir.');
+  }
+  let inflated;
+  try{
+    inflated = pako.inflateRaw(decoded.slice(10));
+  }catch(e){
+    throw new Error('Sıkıştırma çözülemedi — dosya bu araçla üretilmemiş olabilir.');
+  }
+  if(prettify){
+    try{
+      const doc = new DOMParser().parseFromString(new TextDecoder('utf-8').decode(inflated), 'application/xml');
+      const errNode = doc.querySelector('parsererror');
+      if(errNode) throw new Error('XML ayrıştırılamadı');
+      const xmlStr = xmlToString(doc.documentElement, true);
+      return new TextEncoder().encode(xmlStr);
+    }catch(e){
+      return inflated;
+    }
+  }
+  return inflated;
+}
+async function encryptFile(file){
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let cleaned = buf;
+  try{
+    const doc = new DOMParser().parseFromString(new TextDecoder('utf-8').decode(buf), 'application/xml');
+    const errNode = doc.querySelector('parsererror');
+    if(!errNode){
+      const xmlStr = serializeElement(doc.documentElement, 0, false);
+      cleaned = new TextEncoder().encode("<?xml version='1.0' encoding='utf-8'?>\n" + xmlStr);
+    }
+  }catch(e){ /* ayrıştırılamazsa ham veriyle devam */ }
+  const raw = pako.deflateRaw(cleaned);
+  const crc = crc32(cleaned);
+  const size = cleaned.length >>> 0;
+  const gzipHeader = new Uint8Array([0x1f,0x8b,0x08,0x00,0x00,0x00,0x00,0x00,0x00,0x0b]);
+  const trailer = concatBytes([packUInt32LE(crc), packUInt32LE(size)]);
+  const compressed = concatBytes([gzipHeader, raw, trailer]);
+  const text = bytesToB64(compressed);
+  const encodedBytes = new TextEncoder().encode(text);
+  return xorBytes(encodedBytes, 11);
+}
+const fileDec = document.getElementById('file-dec');
+const fileEnc = document.getElementById('file-enc');
+const dropDec = document.getElementById('drop-dec');
+const dropEnc = document.getElementById('drop-enc');
+const btnDec = document.getElementById('btn-dec');
+const btnEnc = document.getElementById('btn-enc');
+const outDec = document.getElementById('out-dec');
+const outEnc = document.getElementById('out-enc');
+const statusDec = document.getElementById('status-dec');
+const statusEnc = document.getElementById('status-enc');
+dropDec.addEventListener('click', ()=>fileDec.click());
+dropEnc.addEventListener('click', ()=>fileEnc.click());
+fileDec.addEventListener('change', ()=>{
+  if(!fileDec.files.length) return;
+  const f = fileDec.files[0];
+  setFileLabel(document.getElementById('drop-dec-text'), f.name);
+  outDec.value = stripExt(f.name) + '.xml';
+  btnDec.disabled = false;
+  statusDec.className = 'status';
+});
+fileEnc.addEventListener('change', ()=>{
+  if(!fileEnc.files.length) return;
+  const f = fileEnc.files[0];
+  setFileLabel(document.getElementById('drop-enc-text'), f.name);
+  outEnc.value = stripExt(f.name) + '.dat';
+  btnEnc.disabled = false;
+  statusEnc.className = 'status';
+});
+btnDec.addEventListener('click', async ()=>{
+  btnDec.disabled = true;
+  try{
+    const bytes = await decryptFile(fileDec.files[0], document.getElementById('prettify').checked);
+    download(bytes, outDec.value || 'output.xml');
+    showStatus(statusDec, true, `Başarılı! ${outDec.value} indirildi.`);
+  }catch(e){
+    showStatus(statusDec, false, 'Hata:\n' + e.message);
+  }
+  btnDec.disabled = false;
+});
+btnEnc.addEventListener('click', async ()=>{
+  btnEnc.disabled = true;
+  try{
+    const bytes = await encryptFile(fileEnc.files[0]);
+    download(bytes, outEnc.value || 'output.dat');
+    showStatus(statusEnc, true, `Başarılı! ${outEnc.value} indirildi.`);
+  }catch(e){
+    showStatus(statusEnc, false, 'Hata:\n' + e.message);
+  }
+  btnEnc.disabled = false;
+});
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW kaydı başarısız:', err));
+  });
+}
+</script>
+</body>
+</html>
