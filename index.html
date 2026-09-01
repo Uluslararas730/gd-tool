@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GD Save Tool — Web</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<style>
+  :root{
+    --bg: #0d0f14;
+    --panel: #14171f;
+    --panel-border: #262b38;
+    --text: #e7e9ee;
+    --text-dim: #8b93a7;
+    --dec: #ff7a45;
+    --dec-dim: #3a2419;
+    --enc: #33c9e8;
+    --enc-dim: #12313a;
+    --ok: #4ade80;
+    --err: #ff5d6c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    padding:32px 18px 60px;
+    position:relative;
+    overflow-x:hidden;
+  }
+  .bg-shape{
+    position:fixed;
+    width:340px;height:340px;
+    top:-120px; right:-140px;
+    background:linear-gradient(135deg,var(--dec),transparent 70%);
+    opacity:.12;
+    clip-path:polygon(50% 0%,100% 100%,0% 100%);
+    pointer-events:none;
+    z-index:0;
+  }
+  .wrap{max-width:600px;margin:0 auto;position:relative;z-index:1;}
+
+  header{margin-bottom:28px;}
+  .eyebrow-shape{
+    width:14px;height:14px;
+    background:var(--enc);
+    clip-path:polygon(50% 0%,100% 100%,0% 100%);
+    display:inline-block;
+    margin-right:8px;
+    transform:translateY(1px);
+  }
+  h1{
+    font-family:'Rajdhani',sans-serif;
+    font-weight:700;
+    font-size:28px;
+    letter-spacing:.3px;
+    margin:0 0 8px;
+    line-height:1.15;
+  }
+  header p{
+    color:var(--text-dim);
+    font-size:14px;
+    line-height:1.6;
+    margin:0;
+    max-width:46ch;
+  }
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:6px;
+    padding:22px 20px;
+    margin-bottom:20px;
+  }
+  .card h2{
+    font-family:'Rajdhani',sans-serif;
+    font-size:19px;
+    font-weight:600;
+    margin:0 0 4px;
+    display:flex;
+    align-items:center;
+    gap:9px;
+  }
+  .tag{
+    width:9px;height:9px;
+    border-radius:1px;
+    display:inline-block;
+  }
+  .tag.dec{background:var(--dec);}
+  .tag.enc{background:var(--enc);}
+
+  .card .desc{
+    color:var(--text-dim);
+    font-size:13px;
+    margin:0 0 18px;
+  }
+
+  .field{margin-bottom:14px;}
+  .field label{
+    display:block;
+    font-size:12px;
+    color:var(--text-dim);
+    margin-bottom:6px;
+    font-weight:500;
+  }
+
+  .filedrop{
+    border:1.5px dashed var(--panel-border);
+    border-radius:5px;
+    padding:16px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+    font-size:13px;
+    color:var(--text-dim);
+  }
+  .filedrop:hover{border-color:var(--text-dim);}
+  .filedrop.has-file{
+    border-style:solid;
+    color:var(--text);
+    background:rgba(255,255,255,.02);
+  }
+  .filedrop input{display:none;}
+
+  input[type=text]{
+    width:100%;
+    background:#0d0f14;
+    border:1px solid var(--panel-border);
+    color:var(--text);
+    padding:10px 12px;
+    border-radius:5px;
+    font-size:14px;
+    font-family:'Inter',sans-serif;
+  }
+  input[type=text]:focus{outline:2px solid var(--enc);outline-offset:1px;}
+
+  .checkline{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    margin-bottom:16px;
+    cursor:pointer;
+    user-select:none;
+    font-size:13px;
+    color:var(--text-dim);
+  }
+  .checkline input{accent-color:var(--enc);width:15px;height:15px;}
+
+  button.go{
+    width:100%;
+    border:none;
+    padding:12px;
+    border-radius:5px;
+    font-family:'Rajdhani',sans-serif;
+    font-weight:600;
+    font-size:15px;
+    letter-spacing:.3px;
+    cursor:pointer;
+    color:#0d0f14;
+    transition:filter .15s ease;
+  }
+  button.go:hover{filter:brightness(1.1);}
+  button.go:active{filter:brightness(.92);}
+  button.go:disabled{opacity:.4;cursor:not-allowed;}
+  .go.dec{background:var(--dec);}
+  .go.enc{background:var(--enc);}
+
+  .status{
+    margin-top:12px;
+    font-size:13px;
+    line-height:1.5;
+    padding:10px 12px;
+    border-radius:5px;
+    display:none;
+    white-space:pre-wrap;
+  }
+  .status.show{display:block;}
+  .status.ok{background:rgba(74,222,128,.1);color:var(--ok);}
+  .status.err{background:rgba(255,93,108,.1);color:var(--err);}
+
+  details{
+    margin-top:26px;
+    font-size:13px;
+    color:var(--text-dim);
+  }
+  details summary{
+    cursor:pointer;
+    color:var(--text);
+    font-weight:500;
+    font-family:'Rajdhani',sans-serif;
+    font-size:15px;
+  }
+  details p{line-height:1.7;}
+  code{
+    background:#0d0f14;
+    padding:1px 5px;
+    border-radius:3px;
+    font-size:12px;
+    border:1px solid var(--panel-border);
+  }
+
+  footer{
+    margin-top:30px;
+    font-size:12px;
+    color:var(--text-dim);
+    line-height:1.6;
+  }
+</style>
+</head>
+<body>
+<div class="bg-shape"></div>
+<div class="wrap">
+
+  <header>
+    <h1><span class="eyebrow-shape"></span>Geometry Dash Save Tool</h1>
+    <p>Save dosyalarını (.dat) düzenlenebilir XML'e çevir, ya da düzenlediğin XML'i oyunun okuyabileceği .dat formatına geri çevir. Her şey tarayıcında çalışır, dosyan hiçbir sunucuya gönderilmez.</p>
+  </header>
+
+  <div class="card">
+    <h2><span class="tag dec"></span>Decrypt</h2>
+    <p class="desc">.dat dosyasını seç, düzenlenebilir .xml olarak indir.</p>
+
+    <div class="field">
+      <label>Kaynak dosya (.dat)</label>
+      <div class="filedrop" id="drop-dec">
+        <span id="drop-dec-text">Dosya seçmek için dokun</span>
+        <input type="file" id="file-dec">
+      </div>
+    </div>
+
+    <label class="checkline">
+      <input type="checkbox" id="prettify">
+      Prettify — XML'i okunaklı biçimde girintile
+    </label>
+
+    <div class="field">
+      <label>İndirilecek dosya adı</label>
+      <input type="text" id="out-dec" placeholder="CCGameManager.xml">
+    </div>
+
+    <button class="go dec" id="btn-dec" disabled>Decrypt &amp; İndir</button>
+    <div class="status" id="status-dec"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="tag enc"></span>Encrypt</h2>
+    <p class="desc">Düzenlediğin .xml dosyasını seç, oyunun okuyacağı .dat formatına çevir.</p>
+
+    <div class="field">
+      <label>Kaynak dosya (.xml)</label>
+      <div class="filedrop" id="drop-enc">
+        <span id="drop-enc-text">Dosya seçmek için dokun</span>
+        <input type="file" id="file-enc">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>İndirilecek dosya adı</label>
+      <input type="text" id="out-enc" placeholder="CCGameManager.dat">
+    </div>
+
+    <button class="go enc" id="btn-enc" disabled>Encrypt &amp; İndir</button>
+    <div class="status" id="status-enc"></div>
+  </div>
+
+  <details>
+    <summary>Nasıl kullanılır?</summary>
+    <p>
+      Geometry Dash save dosyaların genelde şurada bulunur:<br>
+      <code>Android/media/com.geode.launcher/save/</code><br>
+      Dosya adları: <code>CCGameManager.dat</code>, <code>CCGameManager2.dat</code>, <code>CCLocalLevels.dat</code>, <code>CCLocalLevels2.dat</code>.
+    </p>
+    <p>
+      Bu dosyaları telefonundaki bir dosya yöneticisiyle bu sayfaya yükle, düzenle, sonra Encrypt ile aynı isimle geri kaydet ve orijinal konumuna taşı. Oyunu düzenleme yapmadan önce kapatman önerilir.
+    </p>
+  </details>
+
+  <footer>Tüm işlem cihazında, tarayıcı içinde yapılır — hiçbir dosya yüklenmez veya gönderilmez.</footer>
+</div>
+
+<script>
+function setFileLabel(el, name){ el.textContent = name; el.parentElement.classList.add('has-file'); }
+function stripExt(name){ return name.replace(/\.[^/.]+$/, ''); }
+function showStatus(el, ok, msg){
+  el.className = 'status show ' + (ok ? 'ok' : 'err');
+  el.textContent = msg;
+}
+function download(bytes, filename){
+  const blob = new Blob([bytes], {type:'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function xorBytes(bytes, value){
+  const out = new Uint8Array(bytes.length);
+  for(let i=0;i<bytes.length;i++) out[i] = bytes[i] ^ value;
+  return out;
+}
+function b64ToBytes(b64){
+  const std = b64.replace(/-/g,'+').replace(/_/g,'/');
+  const bin = atob(std);
+  const out = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function bytesToB64(bytes){
+  let bin = '';
+  const chunk = 0x8000;
+  for(let i=0;i<bytes.length;i+=chunk){
+    bin += String.fromCharCode.apply(null, bytes.subarray(i,i+chunk));
+  }
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_');
+}
+function crc32(bytes){
+  let crc = -1;
+  for(let i=0;i<bytes.length;i++){
+    crc ^= bytes[i];
+    for(let j=0;j<8;j++){
+      crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ -1) >>> 0;
+}
+function packUInt32LE(n){
+  const b = new Uint8Array(4);
+  b[0]=n&255; b[1]=(n>>>8)&255; b[2]=(n>>>16)&255; b[3]=(n>>>24)&255;
+  return b;
+}
+function concatBytes(arrs){
+  let len = 0; arrs.forEach(a=>len+=a.length);
+  const out = new Uint8Array(len);
+  let off = 0; arrs.forEach(a=>{out.set(a,off); off+=a.length;});
+  return out;
+}
+function escapeXML(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escapeAttr(s){
+  return escapeXML(s).replace(/"/g,'&quot;');
+}
+// Faithful-ish serializer mirroring ElementTree's compact/indented output.
+function serializeElement(node, depth, pretty){
+  const tag = node.tagName;
+  const attrs = Array.from(node.attributes).map(a=>` ${a.name}="${escapeAttr(a.value)}"`).join('');
+  const children = Array.from(node.childNodes).filter(n =>
+    n.nodeType === 1 || (n.nodeType === 3 && n.textContent.trim().length)
+  );
+  const pad = pretty ? '\t'.repeat(depth) : '';
+  const nl = pretty ? '\n' : '';
+
+  if(children.length === 0){
+    return `${pad}<${tag}${attrs}></${tag}>`;
+  }
+  if(children.every(c => c.nodeType === 3)){
+    const text = escapeXML(children.map(c=>c.textContent.trim()).join(''));
+    return `${pad}<${tag}${attrs}>${text}</${tag}>`;
+  }
+  const inner = children
+    .filter(c => c.nodeType === 1)
+    .map(c => serializeElement(c, depth+1, pretty))
+    .join(nl);
+  return `${pad}<${tag}${attrs}>${nl}${inner}${nl}${pad}</${tag}>`;
+}
+function xmlToString(root, pretty){
+  return "<?xml version='1.0' encoding='utf-8'?>\n" + serializeElement(root, 0, pretty);
+}
+
+// ---- Decrypt ----
+async function decryptFile(file, prettify){
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const decrypted = xorBytes(buf, 11);
+  let decoded;
+  try{
+    const text = new TextDecoder('latin1').decode(decrypted);
+    decoded = b64ToBytes(text);
+  }catch(e){
+    throw new Error('Base64 çözülemedi — dosya bozuk veya farklı formatta olabilir.');
+  }
+  let inflated;
+  try{
+    inflated = pako.inflateRaw(decoded.slice(10));
+  }catch(e){
+    throw new Error('Sıkıştırma çözülemedi — dosya bu araçla üretilmemiş olabilir.');
+  }
+  if(prettify){
+    try{
+      const doc = new DOMParser().parseFromString(new TextDecoder('utf-8').decode(inflated), 'application/xml');
+      const errNode = doc.querySelector('parsererror');
+      if(errNode) throw new Error('XML ayrıştırılamadı');
+      const xmlStr = xmlToString(doc.documentElement, true);
+      return new TextEncoder().encode(xmlStr);
+    }catch(e){
+      // prettify başarısız olursa ham veriyi döndür
+      return inflated;
+    }
+  }
+  return inflated;
+}
+
+// ---- Encrypt ----
+async function encryptFile(file){
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let cleaned = buf;
+  try{
+    const doc = new DOMParser().parseFromString(new TextDecoder('utf-8').decode(buf), 'application/xml');
+    const errNode = doc.querySelector('parsererror');
+    if(!errNode){
+      const xmlStr = serializeElement(doc.documentElement, 0, false);
+      cleaned = new TextEncoder().encode("<?xml version='1.0' encoding='utf-8'?>\n" + xmlStr);
+    }
+  }catch(e){ /* ayrıştırılamazsa ham veriyle devam */ }
+
+  const raw = pako.deflateRaw(cleaned);
+  const crc = crc32(cleaned);
+  const size = cleaned.length >>> 0;
+  const gzipHeader = new Uint8Array([0x1f,0x8b,0x08,0x00,0x00,0x00,0x00,0x00,0x00,0x0b]);
+  const trailer = concatBytes([packUInt32LE(crc), packUInt32LE(size)]);
+  const compressed = concatBytes([gzipHeader, raw, trailer]);
+  const text = bytesToB64(compressed);
+  const encodedBytes = new TextEncoder().encode(text);
+  return xorBytes(encodedBytes, 11);
+}
+
+// ---- Wiring ----
+const fileDec = document.getElementById('file-dec');
+const fileEnc = document.getElementById('file-enc');
+const dropDec = document.getElementById('drop-dec');
+const dropEnc = document.getElementById('drop-enc');
+const btnDec = document.getElementById('btn-dec');
+const btnEnc = document.getElementById('btn-enc');
+const outDec = document.getElementById('out-dec');
+const outEnc = document.getElementById('out-enc');
+const statusDec = document.getElementById('status-dec');
+const statusEnc = document.getElementById('status-enc');
+
+dropDec.addEventListener('click', ()=>fileDec.click());
+dropEnc.addEventListener('click', ()=>fileEnc.click());
+
+fileDec.addEventListener('change', ()=>{
+  if(!fileDec.files.length) return;
+  const f = fileDec.files[0];
+  setFileLabel(document.getElementById('drop-dec-text'), f.name);
+  outDec.value = stripExt(f.name) + '.xml';
+  btnDec.disabled = false;
+  statusDec.className = 'status';
+});
+
+fileEnc.addEventListener('change', ()=>{
+  if(!fileEnc.files.length) return;
+  const f = fileEnc.files[0];
+  setFileLabel(document.getElementById('drop-enc-text'), f.name);
+  outEnc.value = stripExt(f.name) + '.dat';
+  btnEnc.disabled = false;
+  statusEnc.className = 'status';
+});
+
+btnDec.addEventListener('click', async ()=>{
+  btnDec.disabled = true;
+  try{
+    const bytes = await decryptFile(fileDec.files[0], document.getElementById('prettify').checked);
+    download(bytes, outDec.value || 'output.xml');
+    showStatus(statusDec, true, `Başarılı! ${outDec.value} indirildi.`);
+  }catch(e){
+    showStatus(statusDec, false, 'Hata:\n' + e.message);
+  }
+  btnDec.disabled = false;
+});
+
+btnEnc.addEventListener('click', async ()=>{
+  btnEnc.disabled = true;
+  try{
+    const bytes = await encryptFile(fileEnc.files[0]);
+    download(bytes, outEnc.value || 'output.dat');
+    showStatus(statusEnc, true, `Başarılı! ${outEnc.value} indirildi.`);
+  }catch(e){
+    showStatus(statusEnc, false, 'Hata:\n' + e.message);
+  }
+  btnEnc.disabled = false;
+});
+</script>
+</body>
+</html>
